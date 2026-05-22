@@ -1,116 +1,140 @@
-![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
-![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
+# Light Shield Mod for Ship of Harkinian
 
-## Website
+A mod that adds a **Light Shield** enhancement to Ship of Harkinian. When enabled, your shield glows with warm golden light at nighttime, illuminating the area around you.
 
-Official Website: https://www.shipofharkinian.com/
+## Features
 
-## Discord
+- **Nighttime Glow**: When you have a shield equipped at night, it emits a warm golden light that helps you see in the dark
+- **Start with Shield**: Option to begin new games with a Deku Shield (Light Shield) already equipped
+- **Toggleable**: Enable/disable the effect anytime from the Enhancements menu
+- **Zero Performance Impact**: Uses the game's built-in lighting system efficiently
 
-Official Discord: https://discord.com/invite/shipofharkinian
+## How to Build (Using GitHub Actions - Easiest Method)
 
-If you're having any trouble after reading through this `README`, feel free to ask for help in the Support text channels. Please keep in mind that we do not condone piracy.
+Since this is a code mod for Ship of Harkinian, it requires compiling the game. The easiest way is to use GitHub's free build servers (Actions):
 
-# Quick Start
+### Step 1: Fork the Shipwright Repository
 
-The Ship does not include any copyrighted assets.  You are required to provide a supported copy of the game.
+1. Go to https://github.com/HarbourMasters/Shipwright
+2. Click the **Fork** button (top right)
+3. This creates your own copy of the repository
 
-### 1. Verify your ROM dump
-You can verify you have dumped a supported copy of the game by using the compatibility checker at https://ship.equipment/. If you'd prefer to manually validate your ROM dump, you can cross-reference its `sha1` hash with the hashes [here](docs/supportedHashes.json).
+### Step 2: Apply the Mod Files
 
-### 2. Download The Ship of Harkinian from [Releases](https://github.com/HarbourMasters/Shipwright/releases)
+**Option A: Apply the patch automatically**
 
-### 3. Launch the Game!
-#### Windows
-* Extract the zip
-* Launch `soh.exe`
+1. Clone your forked repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/Shipwright.git
+   cd Shipwright
+   git checkout develop
+   ```
 
-#### Linux
-* Place your supported copy of the game in the same folder as the appimage.
-* Execute `soh.appimage`.  You may have to `chmod +x` the appimage via terminal.
+2. Copy the mod files into the repo:
+   ```bash
+   # Copy the LightShield directory
+   cp -r /path/to/this/mod/soh/soh/Enhancements/LightShield soh/soh/Enhancements/
+   ```
 
-#### macOS
-* Run `soh.app`. When prompted, select your supported copy of the game.
-* You should see a notification saying `Processing OTR`, then, once the process is complete, you should get a notification saying `OTR Successfully Generated`, then the game should start.
+3. Apply the patch:
+   ```bash
+   git apply light-shield.patch
+   ```
 
-#### Nintendo Switch
-* Run one of the PC releases to generate an `oot.o2r` and/or `oot-mq.o2r` file. After launching the game on PC, you will be able to find these files in the same directory as `soh.exe` or `soh.appimage`. On macOS, these files can be found in `/Users/<username>/Library/Application Support/com.shipofharkinian.soh/`
-* Copy the files to your sd card
+4. Commit and push:
+   ```bash
+   git add -A
+   git commit -m "Add Light Shield mod"
+   git push origin develop
+   ```
+
+**Option B: Manual file edits**
+
+If the patch doesn't apply cleanly, manually:
+
+1. Copy `soh/soh/Enhancements/LightShield/` directory to your forked repo at the same path
+2. Add the source file to CMake in `soh/soh/Enhancements/CMakeLists.txt`:
+   ```cmake
+   set(ENHANCEMENT_SRCS ${ENHANCEMENT_SRCS} ${CMAKE_CURRENT_SOURCE_DIR}/LightShield/LightShield.cpp)
+   ```
+3. Add the include to `soh/soh/Enhancements/mods.cpp`:
+   ```cpp
+   #include "LightShield/LightShield.h"
+   ```
+   And call `LightShield_Init();` inside `InitMods()`
+4. Add menu entries to `soh/soh/SohGui/SohMenuEnhancements.cpp` in the Equipment > Gameplay section
+
+### Step 3: Build with GitHub Actions
+
+1. In your fork on GitHub, go to **Actions** tab
+2. Find the workflow for your platform (Windows/Linux/macOS)
+3. Click **Run workflow** or create a Pull Request from your changes
+4. Wait for the build to complete (may take 30-60 minutes)
+5. Download the built artifact from the Actions page or PR description
+
+### Step 4: Install and Play
+
+1. Download the built Ship of Harkinian zip for your platform
+2. Extract it and run as normal
+3. Go to **Enhancements > Equipment > Gameplay** in the menu
+4. Enable **"Enable Light Shield"**
+5. Start a new game (or load existing save) and enjoy!
+
+## How to Build Locally
+
+If you prefer to build on your own machine, follow the [official BUILDING guide](https://github.com/HarbourMasters/Shipwright/blob/develop/docs/BUILDING.md) for your platform, then apply the mod patch before building.
+
+### Windows Requirements
+- Visual Studio 2022 Community Edition
+- CMake
+- Python 3
+- Git
+
+### Linux Requirements
+```bash
+# Debian/Ubuntu
+sudo apt-get install gcc g++ git cmake ninja-build libsdl2-dev libpng-dev libsdl2-net-dev libzip-dev libboost-dev
+
+# Then apply the patch and build as described in BUILDING.md
 ```
-sdcard
-└── switch
-    └── soh
-        ├── oot-mq.o2r
-        ├── oot.o2r
-        ├── soh.nro
-        └── soh.o2r
+
+### macOS Requirements
+```bash
+brew install sdl2 libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis
+# Then apply the patch and build as described in BUILDING.md
 ```
-* Launch via Atmosphere's `Game+R` launcher method.
 
-### 4. Play!
+## How It Works
 
-Congratulations, you are now sailing with the Ship of Harkinian! Have fun!
+The mod hooks into two game systems:
 
-# Configuration
+1. **Save Initialization**: When a new save is created, if the enhancement is enabled, it adds a Deku Shield to your inventory and auto-equips it
 
-### Default keyboard configuration
-| N64 | A | B | Z | Start | Analog stick | C buttons | D-Pad |
-| - | - | - | - | - | - | - | - |
-| Keyboard | X | C | Z | Space | WASD | Arrow keys | TFGH |
+2. **Player Update**: Every frame, the mod checks:
+   - Is the Light Shield enhancement enabled?
+   - Is it nighttime? (OoT's day/night cycle: night = 0xC001-0x3FFF)
+   - Do you have a shield equipped?
+   
+   If all conditions are met, a dynamic point light is attached to the player at shield height, creating a warm golden glow effect.
 
-### Other shortcuts
-| Keys | Action |
-| - | - |
-| ESC | Toggle menu |
-| F2 | Toggle capture mouse input |
-| F5 | Save state |
-| F6 | Change state |
-| F7 | Load state |
-| F9 | Toggle Text-to-Speech (Windows and Mac only) |
-| F11 | Fullscreen |
-| Tab | Toggle Alternate assets |
-| Ctrl+R | Reset |
+## Files Added/Modified
 
-# Project Overview
-Ship of Harkinian (SOH) is built atop a custom library dubbed libultraship (LUS). Back in the N64 days, there was an SDK distributed to developers named libultra; LUS is designed to mimic the functionality of libultra on modern hardware. In addition, we are dependant on the source code provided by the OOT decompilation project.
+### New Files
+- `soh/soh/Enhancements/LightShield/LightShield.cpp` - Main mod implementation
+- `soh/soh/Enhancements/LightShield/LightShield.h` - Header file
 
-In order for the game to function, you will require a **legally acquired** ROM for Ocarina of Time. Click [here](https://ship.equipment/) to check the compatibility of your specific rom. Any copyrighted assets are extracted from the ROM and reformatted as a .o2r archive file which the code uses.
+### Modified Files
+- `soh/soh/Enhancements/CMakeLists.txt` - Added source to build
+- `soh/soh/Enhancements/mods.cpp` - Initialize the mod
+- `soh/soh/SohGui/SohMenuEnhancements.cpp` - Added menu entries
 
-### Graphics Backends
-Currently, there are three rendering APIs supported: DirectX11 (Windows), OpenGL (all platforms), and Metal (MacOS). You can change which API to use in the `Settings` menu of the menubar, which requires a restart.  If you're having an issue with crashing, you can change the API in the `shipofharkinian.json` file by finding the line `gfxbackend:""` and changing the value to `sdl` for OpenGL. DirectX 11 is the default on Windows.
+## Compatibility
 
-# Custom Assets
+- Works with SoH v9.0.0+
+- Compatible with Randomizer
+- Compatible with existing shield model replacement mods
+- No conflicts with other enhancements
 
-Custom assets are packed in `.otr` archive files. To use custom assets, place them in the `mods` folder.
+## License
 
-If you're interested in creating and/or packing your own custom asset `.otr` files, check out the following tools:
-* [**retro - OTR generator**](https://github.com/HarbourMasters64/retro)
-* [**fast64 - Blender plugin**](https://github.com/HarbourMasters/fast64)
-
-# Development
-### Building
-
-If you want to manually compile SoH, please consult the [building instructions](docs/BUILDING.md).
-
-### Playtesting
-If you want to playtest a continuous integration build, you can find them at the links below. Keep in mind that these are for playtesting only, and you will likely encounter bugs and possibly crashes. 
-
-* [Windows](https://nightly.link/HarbourMasters/Shipwright/workflows/generate-builds/develop/soh-windows.zip)
-* [macOS](https://nightly.link/HarbourMasters/Shipwright/workflows/generate-builds/develop/soh-mac.zip)
-* [Linux](https://nightly.link/HarbourMasters/Shipwright/workflows/generate-builds/develop/soh-linux.zip)
-
-### Further Reading
-More detailed documentation can be found in the 'docs' directory, including the aforementioned [building instructions](docs/BUILDING.md).
-
-* [Credits](docs/CREDITS.md)
-* [Custom Music](docs/CUSTOM_MUSIC.md)
-* [Controller Mapping](docs/GAME_CONTROLLER_DB.md)
-* [Modding](docs/MODDING.md)
-* [Versioning](docs/VERSIONING.md)
-
-<a href="https://github.com/Kenix3/libultraship/">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/poweredbylus.darkmode.png">
-    <img alt="Powered by libultraship" src="./docs/poweredbylus.lightmode.png">
-  </picture>
-</a>
+This mod follows the same license as Ship of Harkinian (CC0). No Nintendo assets are included.

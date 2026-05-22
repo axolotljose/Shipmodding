@@ -1,0 +1,191 @@
+From: Light Shield Mod
+Date: 2026-05-23
+Subject: [PATCH] Add Light Shield enhancement to Ship of Harkinian
+
+This patch adds a new "Light Shield" enhancement that:
+- Gives the player a shield at game start (acts as the Light Shield)
+- Makes the shield glow with warm golden light when equipped at night
+- Adds a toggle in the Equipment > Gameplay enhancements menu
+- Handles room transitions and scene changes properly
+
+---
+ soh/soh/Enhancements/CMakeLists.txt             |   2 +
+ soh/soh/Enhancements/LightShield/LightShield.cpp | 102 +++++++++++++++++++++++
+ soh/soh/Enhancements/LightShield/LightShield.h   |   6 ++
+ soh/soh/Enhancements/mods.cpp                    |   3 ++
+ soh/soh/SohGui/SohMenuEnhancements.cpp           |  13 +++
+ 5 files changed, 126 insertions(+)
+
+diff --git a/soh/soh/Enhancements/CMakeLists.txt b/soh/soh/Enhancements/CMakeLists.txt
+--- a/soh/soh/Enhancements/CMakeLists.txt
++++ b/soh/soh/Enhancements/CMakeLists.txt
+@@ -1,5 +1,7 @@
+ # Add new source files here
+ 
++set(ENHANCEMENT_SRCS ${ENHANCEMENT_SRCS} ${CMAKE_CURRENT_SOURCE_DIR}/LightShield/LightShield.cpp)
++
+ # Keep alphabetized
+ set(ENHANCEMENT_SRCS ${ENHANCEMENT_SRCS}
+     ${CMAKE_CURRENT_SOURCE_DIR}/ArrowCycle.cpp
+
+diff --git a/soh/soh/Enhancements/LightShield/LightShield.cpp b/soh/soh/Enhancements/LightShield/LightShield.cpp
+new file mode 100644
+--- /dev/null
++++ b/soh/soh/Enhancements/LightShield/LightShield.cpp
+@@ -0,0 +1,102 @@
++#include "LightShield.h"
++#include <libultraship/bridge.h>
++#include "soh/Enhancements/game-interactor/GameInteractor.h"
++#include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
++#include "soh/SaveManager.h"
++#include "soh/OTRGlobals.h"
++#include "global.h"
++
++extern "C" {
++#include "macros.h"
++#include "variables.h"
++}
++
++#define CVAR_LIGHT_SHIELD "gEnhancements.LightShield"
++#define CVAR_LIGHT_SHIELD_START "gEnhancements.LightShield.StartWithShield"
++
++// Light offset relative to player position (shield hand area)
++static Vec3f sLightOffset = { 0.0f, 45.0f, 15.0f };
++
++// Static LightInfo for our shield light
++static LightInfo sShieldLightInfo;
++static s32 sLightNum = -1;
++static s16 sLastRoom = -1;
++
++static bool IsNighttime() {
++    return (gSaveContext.dayTime >= 0xC001 || gSaveContext.dayTime < 0x4000);
++}
++
++static bool HasShieldEquipped(Player* player) {
++    if (player == NULL) {
++        return false;
++    }
++    u8 shieldEquip = (gSaveContext.save.info.equips.equipment >> (EQUIP_TYPE_SHIELD * 4)) & 0xF;
++    return shieldEquip != EQUIP_VALUE_SHIELD_NONE;
++}
++
++static void RemoveLight(Player* player) {
++    if (sLightNum >= 0 && player != NULL && player->actor.world.colCtx != NULL) {
++        LightContext_RemoveLight(player->actor.world.colCtx, player->actor.world.room, sLightNum);
++        sLightNum = -1;
++        sLastRoom = -1;
++    }
++}
++
++void LightShield_Init() {
++    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnSaveInit>([](int32_t fileNum) {
++        if (!CVarGetInteger(CVAR_LIGHT_SHIELD, 0)) return;
++        if (!CVarGetInteger(CVAR_LIGHT_SHIELD_START, 1)) return;
++
++        u16* equipment = &gSaveContext.save.info.inventory.equipment;
++        if (!(*equipment & OWNED_EQUIP_FLAG(EQUIP_TYPE_SHIELD, EQUIP_INV_SHIELD_DEKU))) {
++            *equipment |= OWNED_EQUIP_FLAG(EQUIP_TYPE_SHIELD, EQUIP_INV_SHIELD_DEKU);
++            u8 currentShield = (gSaveContext.save.info.equips.equipment >> (EQUIP_TYPE_SHIELD * 4)) & 0xF;
++            if (currentShield == EQUIP_VALUE_SHIELD_NONE) {
++                gSaveContext.save.info.equips.equipment &= ~(0xF << (EQUIP_TYPE_SHIELD * 4));
++                gSaveContext.save.info.equips.equipment |= EQUIP_VALUE_SHIELD_DEKU << (EQUIP_TYPE_SHIELD * 4);
++            }
++        }
++    });
++
++    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnPlayerUpdate>([](Player* player) {
++        if (!CVarGetInteger(CVAR_LIGHT_SHIELD, 0)) {
++            RemoveLight(player);
++            return;
++        }
++        if (player == NULL || player->actor.world.colCtx == NULL) {
++            RemoveLight(player);
++            return;
++        }
++        if (sLastRoom != player->actor.world.room) {
++            if (sLightNum >= 0) {
++                LightContext_RemoveLight(player->actor.world.colCtx, sLastRoom, sLightNum);
++                sLightNum = -1;
++            }
++            sLastRoom = player->actor.world.room;
++        }
++        bool shouldGlow = IsNighttime() && HasShieldEquipped(player);
++        if (!shouldGlow) {
++            RemoveLight(player);
++            return;
++        }
++        Lights_PointNoGlowSetInfo(&sShieldLightInfo,
++            (s16)(player->actor.world.pos.x + sLightOffset.x),
++            (s16)(player->actor.world.pos.y + sLightOffset.y),
++            (s16)(player->actor.world.pos.z + sLightOffset.z),
++            255, 220, 150, 100);
++        if (sLightNum < 0) {
++            sLightNum = LightContext_InsertLight(player->actor.world.colCtx, player->actor.world.room, &sShieldLightInfo);
++        }
++    });
++
++    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnSceneInit>([](int32_t sceneNum) {
++        sLightNum = -1;
++        sLastRoom = -1;
++    });
++
++    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnExitGame>([](int32_t exitCode) {
++        sLightNum = -1;
++        sLastRoom = -1;
++    });
++}
++
+diff --git a/soh/soh/Enhancements/LightShield/LightShield.h b/soh/soh/Enhancements/LightShield/LightShield.h
+new file mode 100644
+--- /dev/null
++++ b/soh/soh/Enhancements/LightShield/LightShield.h
+@@ -0,0 +1,6 @@
++#ifndef LIGHT_SHIELD_H
++#define LIGHT_SHIELD_H
++
++void LightShield_Init();
++
++#endif // LIGHT_SHIELD_H
++
+diff --git a/soh/soh/Enhancements/mods.cpp b/soh/soh/Enhancements/mods.cpp
+--- a/soh/soh/Enhancements/mods.cpp
++++ b/soh/soh/Enhancements/mods.cpp
+@@ -1,4 +1,7 @@
+ #include "mods.h"
++#include "LightShield/LightShield.h"
+ 
+ void InitMods() {
+     // Existing init calls...
++    LightShield_Init();
+ }
+
+diff --git a/soh/soh/SohGui/SohMenuEnhancements.cpp b/soh/soh/SohGui/SohMenuEnhancements.cpp
+--- a/soh/soh/SohGui/SohMenuEnhancements.cpp
++++ b/soh/soh/SohGui/SohMenuEnhancements.cpp
+@@ -42,6 +42,7 @@
+ #include <soh/Enhancements/cosmetics/authenticGfxPatches.h>
+ #include <soh/Enhancements/TimeDisplay/TimeDisplay.h>
++#include <soh/Enhancements/LightShield/LightShield.h>
+ 
+ extern "C" {
+ #include "functions.h"
+@@ -1240,6 +1241,18 @@ void SohMenu::AddMenuEnhancements() {
+         .CVar("gEnhancements.AssignableTunicsAndBoots")
+         .Options(CheckboxOptions().Tooltip("Allows equipping tunics and boots to C-buttons."));
+ 
++    // Light Shield Enhancement
++    path = { "Enhancements", "Equipment", "Gameplay" };
++    AddWidget(path, "Light Shield", WIDGET_SEPARATOR);
++    AddWidget(path, "Enable Light Shield", WIDGET_CVAR_CHECKBOX)
++        .CVar("gEnhancements.LightShield")
++        .Options(CheckboxOptions().Tooltip(
++            "When enabled, your shield will glow with warm golden light at nighttime, "
++            "illuminating the area around you."));
++    AddWidget(path, "Start with Light Shield", WIDGET_CVAR_CHECKBOX)
++        .CVar("gEnhancements.LightShield.StartWithShield")
++        .Options(CheckboxOptions().Tooltip(
++            "Start new games with a Deku Shield (Light Shield) already equipped."));
++
+     // Fixes section
+     path = { "Enhancements", "Fixes", "Bugs" };
+     AddWidget(path, "Bugs fixes", WIDGET_SEPARATOR);
